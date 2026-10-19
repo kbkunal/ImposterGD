@@ -12,30 +12,44 @@ import { CreateRoomPage } from './pages/CreateRoomPage';
 import { WaitingRoomPage } from './pages/WaitingRoomPage';
 import { GamePage } from './pages/GamePage';
 import { SettingsPage } from './pages/SettingsPage';
+import { OfflineSetupPage } from './pages/OfflineSetupPage';
+import { OfflineGamePage } from './pages/OfflineGamePage';
 import { NotFoundPage } from './pages/NotFoundPage';
 
 export function App() {
   const { user, isLoading, initAuth } = useAuthStore();
-  const { currentRoom, joinRoomByCode, subscribeToRoomEvents } = useGameStore();
+  const { currentRoom, currentRound, joinRoomByCode, subscribeToRoomEvents } = useGameStore();
   const [currentPage, setCurrentPage] = useState<string>('landing');
+  const [pendingCode, setPendingCode] = useState<string | null>(null);
 
   // Initialize Auth on start
   useEffect(() => {
     initAuth();
   }, [initAuth]);
 
-  // Check URL query parameters for invite links (e.g., ?join=ABCD12)
+  // Check URL query parameters for invite links (e.g., ?join=ABCD12) & persist in sessionStorage
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const joinCode = params.get('join');
-    if (joinCode && user) {
-      joinRoomByCode(joinCode, user).then((ok) => {
-        if (ok) {
-          setCurrentPage('waiting-room');
-          // clean url
-          window.history.replaceState({}, document.title, window.location.pathname);
-        }
-      });
+    const joinCode = params.get('join') || sessionStorage.getItem('pending_join_code');
+
+    if (joinCode) {
+      const clean = joinCode.trim().toUpperCase();
+      sessionStorage.setItem('pending_join_code', clean);
+      setPendingCode(clean);
+
+      if (user) {
+        sessionStorage.removeItem('pending_join_code');
+        setPendingCode(null);
+        joinRoomByCode(clean, user).then((ok) => {
+          if (ok) {
+            setCurrentPage('waiting-room');
+            window.history.replaceState({}, document.title, window.location.pathname);
+          }
+        });
+      } else {
+        // If not logged in, direct to login
+        setCurrentPage('login');
+      }
     }
   }, [user, joinRoomByCode]);
 
@@ -43,10 +57,23 @@ export function App() {
   useEffect(() => {
     if (!isLoading) {
       if (user && currentPage === 'landing') {
-        setCurrentPage('dashboard');
+        const storedJoin = sessionStorage.getItem('pending_join_code');
+        if (storedJoin) {
+          sessionStorage.removeItem('pending_join_code');
+          setPendingCode(null);
+          joinRoomByCode(storedJoin, user).then((ok) => {
+            if (ok) {
+              setCurrentPage('waiting-room');
+            } else {
+              setCurrentPage('dashboard');
+            }
+          });
+        } else {
+          setCurrentPage('dashboard');
+        }
       }
     }
-  }, [isLoading, user]);
+  }, [isLoading, user, currentPage, joinRoomByCode]);
 
   // Subscribe to real-time room events whenever currentRoom changes
   useEffect(() => {
@@ -56,8 +83,19 @@ export function App() {
     }
   }, [currentRoom?.id, user?.id, subscribeToRoomEvents]);
 
+  // Auto-navigate all room players to 'game' when round starts
+  useEffect(() => {
+    if (
+      currentRound &&
+      ['DEALING_CARDS', 'CARD_REVEAL', 'CLUE_ROUND'].includes(currentRound.phase) &&
+      currentPage === 'waiting-room'
+    ) {
+      setCurrentPage('game');
+    }
+  }, [currentRound?.id, currentRound?.phase, currentPage]);
+
   const handleNavigate = (page: string) => {
-    // Auth guards
+    // Auth guards (offline mode does not require auth!)
     const protectedPages = ['dashboard', 'friends', 'profile', 'create-room', 'waiting-room', 'game'];
     if (!user && protectedPages.includes(page)) {
       setCurrentPage('login');
@@ -69,6 +107,7 @@ export function App() {
 
   const handleJoinCode = async (code: string) => {
     if (!user) {
+      sessionStorage.setItem('pending_join_code', code.trim().toUpperCase());
       setCurrentPage('login');
       return false;
     }
@@ -96,6 +135,13 @@ export function App() {
         onAcceptGameInvite={(code) => handleJoinCode(code)}
       />
 
+      {/* Invite Link Banner if player has pending invitation code */}
+      {pendingCode && !user && (
+        <div className="bg-gradient-to-r from-purple-900/90 to-rose-900/90 py-2.5 px-4 text-center text-xs font-bold text-white flex items-center justify-center gap-2 border-b border-purple-500/40">
+          <span>🎮 You have been invited to join room <strong className="font-mono text-amber-300 text-sm">{pendingCode}</strong>! Log in or Sign Up below to take your seat!</span>
+        </div>
+      )}
+
       <main className="flex-1">
         {currentPage === 'landing' && <LandingPage onNavigate={handleNavigate} />}
         {currentPage === 'login' && <LoginPage onNavigate={handleNavigate} />}
@@ -109,7 +155,9 @@ export function App() {
         {currentPage === 'waiting-room' && <WaitingRoomPage onNavigate={handleNavigate} />}
         {currentPage === 'game' && <GamePage onNavigate={handleNavigate} />}
         {currentPage === 'settings' && <SettingsPage onNavigate={handleNavigate} />}
-        {!['landing', 'login', 'signup', 'dashboard', 'friends', 'profile', 'create-room', 'waiting-room', 'game', 'settings'].includes(currentPage) && (
+        {currentPage === 'offline-setup' && <OfflineSetupPage onNavigate={handleNavigate} />}
+        {currentPage === 'offline-game' && <OfflineGamePage onNavigate={handleNavigate} />}
+        {!['landing', 'login', 'signup', 'dashboard', 'friends', 'profile', 'create-room', 'waiting-room', 'game', 'settings', 'offline-setup', 'offline-game'].includes(currentPage) && (
           <NotFoundPage onNavigate={handleNavigate} />
         )}
       </main>

@@ -1,8 +1,8 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { RoomPlayer, GameRound, GamePhase } from '../../types/game';
 import { CharacterCard } from './CharacterCard';
-import { Clock, Eye, Sparkles, MessageCircle, HelpCircle } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { Clock, Eye, Sparkles, MessageCircle, HelpCircle, ArrowRight, Mic } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 export interface VirtualRoundTableProps {
   players: RoomPlayer[];
@@ -29,7 +29,30 @@ export const VirtualRoundTable: React.FC<VirtualRoundTableProps> = ({
 }) => {
   const totalPlayers = players.length;
 
-  // Calculate vote tallies if in reveal phase
+  // Active speaker info
+  const activeSpeakerPlayer = players.find(p => p.user_id === currentRound?.active_speaker_id);
+  const isMySpeakerTurn = currentRound?.active_speaker_id === currentUserId && phase === 'CLUE_ROUND';
+
+  // Countdown timer for phases with phase_deadline
+  const [secondsRemaining, setSecondsRemaining] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!currentRound?.phase_deadline || ['ROUND_RESULTS', 'MATCH_RESULTS', 'WAITING_ROOM'].includes(phase)) {
+      setSecondsRemaining(null);
+      return;
+    }
+
+    const updateTimer = () => {
+      const left = Math.max(0, Math.ceil((currentRound.phase_deadline - Date.now()) / 1000));
+      setSecondsRemaining(left);
+    };
+
+    updateTimer();
+    const interval = setInterval(updateTimer, 1000);
+    return () => clearInterval(interval);
+  }, [currentRound?.phase_deadline, phase]);
+
+  // Vote tallies during reveal phase
   const votesTally = useMemo(() => {
     if (!currentRound?.votes || !['VOTE_REVEAL', 'IMPOSTER_GUESS', 'ROUND_RESULTS', 'MATCH_RESULTS'].includes(phase)) {
       return {};
@@ -41,23 +64,22 @@ export const VirtualRoundTable: React.FC<VirtualRoundTableProps> = ({
     return tally;
   }, [currentRound?.votes, phase]);
 
-  // Circular placement positions for desktop / large screens
-  // Adjust radius based on player count to prevent overlaps (from 3 up to 10)
+  // Circular placement positions for desktop (>= 768px)
+  // Dynamically calculate radius and spread based on player count (3 to 10)
   const playerPositions = useMemo(() => {
     if (totalPlayers === 0) return [];
 
-    // Find index of current user to place them at bottom
     let userIndex = players.findIndex(p => p.user_id === currentUserId);
     if (userIndex === -1) userIndex = 0;
 
     return players.map((player, index) => {
-      // Offset so current user is near bottom (angle = PI/2)
+      // Offset so current user is positioned at bottom (angle = PI/2)
       const relativeIndex = (index - userIndex + totalPlayers) % totalPlayers;
       const angle = (relativeIndex * (2 * Math.PI)) / totalPlayers + Math.PI / 2;
 
-      // Elliptical table radii (wider than tall for 16:9 monitor view)
-      const radiusX = totalPlayers <= 4 ? 220 : totalPlayers <= 6 ? 260 : 310;
-      const radiusY = totalPlayers <= 4 ? 160 : totalPlayers <= 6 ? 190 : 220;
+      // Adaptive radii to ensure no overlapping cards
+      const radiusX = totalPlayers <= 4 ? 230 : totalPlayers <= 6 ? 270 : totalPlayers <= 8 ? 320 : 360;
+      const radiusY = totalPlayers <= 4 ? 165 : totalPlayers <= 6 ? 195 : totalPlayers <= 8 ? 220 : 240;
 
       const x = Math.cos(angle) * radiusX;
       const y = Math.sin(angle) * radiusY;
@@ -66,63 +88,73 @@ export const VirtualRoundTable: React.FC<VirtualRoundTableProps> = ({
     });
   }, [players, totalPlayers, currentUserId]);
 
-  const activeSpeakerPlayer = players.find(p => p.user_id === currentRound?.active_speaker_id);
-  const isMySpeakerTurn = currentRound?.active_speaker_id === currentUserId && phase === 'CLUE_ROUND';
+  const conciseInstruction = getPhaseDirectInstruction(
+    phase,
+    activeSpeakerPlayer?.profile.display_name,
+    isMySpeakerTurn
+  );
 
   return (
-    <div className="relative w-full max-w-5xl mx-auto flex flex-col items-center justify-center py-6 select-none overflow-hidden">
-      {/* Desktop & Tablet Table (Centered Circular Layout) */}
-      <div className="hidden md:flex relative items-center justify-center w-[740px] h-[540px] my-4">
-        {/* Ambient table neon glow */}
-        <div className="absolute w-[580px] h-[400px] rounded-[50%] bg-purple-900/20 blur-3xl pointer-events-none" />
-        <div className="absolute w-[480px] h-[320px] rounded-[50%] bg-cyan-900/15 blur-2xl pointer-events-none" />
+    <div className="relative w-full max-w-6xl mx-auto flex flex-col items-center justify-center py-2 sm:py-6 select-none overflow-hidden">
+      {/* ========================================================= */}
+      {/* 1. DESKTOP VIRTUAL ROUND TABLE (>= 768px)                */}
+      {/* ========================================================= */}
+      <div className="hidden md:flex relative items-center justify-center w-[780px] h-[550px] my-2">
+        {/* Ambient neon underglow */}
+        <div className="absolute w-[640px] h-[420px] rounded-[50%] bg-purple-900/20 blur-3xl pointer-events-none" />
+        <div className="absolute w-[500px] h-[320px] rounded-[50%] bg-cyan-900/15 blur-2xl pointer-events-none" />
 
         {/* Outer stylized tabletop disc */}
-        <div className="absolute w-[540px] h-[380px] rounded-[50%] border-4 border-[#1E2748] bg-radial from-[#151D36] via-[#0E1326] to-[#080B14] shadow-2xl table-glow flex items-center justify-center">
-          {/* Inner ring felt accent */}
-          <div className="w-[440px] h-[290px] rounded-[50%] border border-purple-500/20 bg-gradient-to-b from-[#18203B]/60 to-[#0B0F1C]/90 flex flex-col items-center justify-center p-6 text-center relative overflow-hidden">
-            {/* Subtle table pattern */}
-            <div className="absolute inset-0 bg-[radial-gradient(#312E81_1px,transparent_1px)] [background-size:16px_16px] opacity-20 pointer-events-none" />
+        <div className="absolute w-[580px] h-[400px] rounded-[50%] border-4 border-[#252F52] bg-radial from-[#151D3A] via-[#0E1428] to-[#080C1A] shadow-2xl table-glow flex items-center justify-center">
+          {/* Inner felt table ring */}
+          <div className="w-[480px] h-[310px] rounded-[50%] border border-purple-500/25 bg-gradient-to-b from-[#18203B]/80 to-[#0A0E1C]/95 flex flex-col items-center justify-center p-6 text-center relative overflow-hidden shadow-inner">
+            <div className="absolute inset-0 bg-[radial-gradient(#312E81_1px,transparent_1px)] [background-size:16px_16px] opacity-25 pointer-events-none" />
 
             {/* Table Center Hub */}
-            <div className="relative z-10 flex flex-col items-center max-w-[260px]">
+            <div className="relative z-10 flex flex-col items-center max-w-[280px]">
               {/* Category pill */}
               {currentRound?.category && (
-                <span className="text-[10px] font-black uppercase tracking-wider text-purple-300 bg-purple-950/80 px-2.5 py-0.5 rounded-full border border-purple-500/30 mb-1.5 shadow-sm">
+                <span className="text-[10px] font-black uppercase tracking-widest text-purple-300 bg-purple-950/80 px-3 py-0.5 rounded-full border border-purple-500/40 mb-1.5 shadow-sm">
                   {currentRound.category}
                 </span>
               )}
 
-              {/* Phase Title */}
-              <h4 className="text-base font-black text-white tracking-wide uppercase">
+              {/* Phase Title Badge */}
+              <h3 className="text-sm sm:text-base font-black text-white tracking-wide uppercase drop-shadow">
                 {formatPhaseName(phase)}
-              </h4>
+              </h3>
 
-              {/* Phase Microcopy */}
-              <p className="text-xs text-slate-300 mt-1 leading-snug">
-                {getPhaseDescription(phase, activeSpeakerPlayer?.profile.display_name, isMySpeakerTurn)}
+              {/* Countdown clock if active */}
+              {secondsRemaining !== null && secondsRemaining > 0 && (
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-950/70 border border-amber-500/40 text-amber-300 font-mono text-xs font-black my-1">
+                  <Clock className="w-3.5 h-3.5 animate-pulse" />
+                  <span>{secondsRemaining}s remaining</span>
+                </div>
+              )}
+
+              {/* Direct Concise Instruction */}
+              <p className="text-xs font-bold text-slate-200 mt-1 leading-snug drop-shadow-sm">
+                {conciseInstruction}
               </p>
 
-              {/* Action Buttons in Center Hub */}
+              {/* Center Hub Quick Action Buttons */}
               <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
-                {/* Reveal Card button */}
                 {phase !== 'WAITING_ROOM' && onOpenPrivateCardModal && (
                   <button
                     type="button"
                     onClick={onOpenPrivateCardModal}
-                    className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-xl bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 border border-purple-400/30 shadow-md transition-all active:scale-95"
+                    className="inline-flex items-center gap-1.5 text-xs font-black px-3.5 py-1.5 rounded-xl bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 border border-purple-400/40 shadow-md transition-all active:scale-95"
                   >
                     <Eye className="w-3.5 h-3.5" />
-                    View Secret Card
+                    Inspect Card
                   </button>
                 )}
 
-                {/* Host Next Speaker button in Clue Phase */}
                 {phase === 'CLUE_ROUND' && (isHost || isMySpeakerTurn) && onAdvanceTurn && (
                   <button
                     type="button"
                     onClick={onAdvanceTurn}
-                    className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-md transition-all active:scale-95"
+                    className="inline-flex items-center gap-1.5 text-xs font-black px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-slate-950 shadow-md transition-all active:scale-95 border-t border-amber-200"
                   >
                     Next Turn →
                   </button>
@@ -132,7 +164,7 @@ export const VirtualRoundTable: React.FC<VirtualRoundTableProps> = ({
           </div>
         </div>
 
-        {/* Evenly distributed circular player cards */}
+        {/* Distributed Circular Player Cards */}
         {playerPositions.map(({ player, x, y }) => {
           const isCurrentUser = player.user_id === currentUserId;
           const isCurrentSpeaker = player.user_id === currentRound?.active_speaker_id && phase === 'CLUE_ROUND';
@@ -157,7 +189,7 @@ export const VirtualRoundTable: React.FC<VirtualRoundTableProps> = ({
           return (
             <div
               key={player.user_id}
-              className="absolute z-20 -translate-x-1/2 -translate-y-1/2"
+              className="absolute z-20 -translate-x-1/2 -translate-y-1/2 transition-transform duration-200"
               style={{
                 left: `calc(50% + ${x}px)`,
                 top: `calc(50% + ${y}px)`,
@@ -182,29 +214,40 @@ export const VirtualRoundTable: React.FC<VirtualRoundTableProps> = ({
         })}
       </div>
 
-      {/* Mobile Responsive Layout (< 768px) */}
-      {/* Stadium / Grid view that ensures every player is clearly visible without overlaps */}
-      <div className="flex md:hidden flex-col w-full px-3 space-y-4">
-        {/* Mobile Table Hub Card */}
-        <div className="w-full bg-[#12182C] border border-purple-500/30 rounded-2xl p-4 text-center shadow-xl table-glow">
+      {/* ========================================================= */}
+      {/* 2. MOBILE RESPONSIVE ADAPTIVE ARENA (< 768px)             */}
+      {/* ========================================================= */}
+      <div className="flex md:hidden flex-col w-full px-2 space-y-3">
+        {/* Mobile Central Stage Card */}
+        <div className="w-full bg-gradient-to-b from-[#151D3A] to-[#0E1428] border-2 border-purple-500/30 rounded-3xl p-4 text-center shadow-xl table-glow space-y-2">
           {currentRound?.category && (
-            <span className="text-[10px] font-black uppercase tracking-wider text-purple-300 bg-purple-950/80 px-2.5 py-0.5 rounded-full border border-purple-500/30 mb-1 inline-block">
+            <span className="text-[10px] font-black uppercase tracking-widest text-purple-300 bg-purple-950/90 px-3 py-0.5 rounded-full border border-purple-500/40 inline-block">
               {currentRound.category}
             </span>
           )}
-          <h4 className="text-base font-black text-white uppercase mt-1">
-            {formatPhaseName(phase)}
-          </h4>
-          <p className="text-xs text-slate-300 mt-1">
-            {getPhaseDescription(phase, activeSpeakerPlayer?.profile.display_name, isMySpeakerTurn)}
+
+          <div className="flex items-center justify-center gap-2">
+            <h3 className="text-base font-black text-white uppercase tracking-wide">
+              {formatPhaseName(phase)}
+            </h3>
+            {secondsRemaining !== null && secondsRemaining > 0 && (
+              <span className="text-xs font-mono font-black text-amber-300 bg-amber-950/70 px-2 py-0.5 rounded-full border border-amber-500/40">
+                {secondsRemaining}s
+              </span>
+            )}
+          </div>
+
+          <p className="text-xs font-bold text-slate-200 leading-snug max-w-sm mx-auto">
+            {conciseInstruction}
           </p>
 
-          <div className="mt-3 flex items-center justify-center gap-2">
+          {/* Quick buttons in stage */}
+          <div className="flex items-center justify-center gap-2 pt-1">
             {phase !== 'WAITING_ROOM' && onOpenPrivateCardModal && (
               <button
                 type="button"
                 onClick={onOpenPrivateCardModal}
-                className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-xl bg-purple-600/30 text-purple-200 border border-purple-400/30 shadow-md"
+                className="inline-flex items-center gap-1.5 text-xs font-black px-3 py-1.5 rounded-xl bg-purple-600/30 text-purple-200 border border-purple-400/40 active:scale-95"
               >
                 <Eye className="w-3.5 h-3.5" />
                 View Card
@@ -215,7 +258,7 @@ export const VirtualRoundTable: React.FC<VirtualRoundTableProps> = ({
               <button
                 type="button"
                 onClick={onAdvanceTurn}
-                className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-xl bg-amber-500 text-slate-950 shadow-md"
+                className="inline-flex items-center gap-1.5 text-xs font-black px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-950 shadow-md active:scale-95"
               >
                 Next Turn →
               </button>
@@ -223,8 +266,25 @@ export const VirtualRoundTable: React.FC<VirtualRoundTableProps> = ({
           </div>
         </div>
 
-        {/* Mobile Players Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 w-full">
+        {/* Active speaker spotlight banner if in clue round */}
+        {phase === 'CLUE_ROUND' && activeSpeakerPlayer && (
+          <div className="flex items-center justify-between p-3 rounded-2xl bg-amber-500/15 border-2 border-amber-400/60 shadow-lg">
+            <div className="flex items-center gap-2.5">
+              <Mic className="w-4 h-4 text-amber-400 animate-pulse" />
+              <span className="text-xs font-black text-white">
+                {isMySpeakerTurn ? "It's your turn to speak!" : `${activeSpeakerPlayer.profile.display_name}'s turn to speak`}
+              </span>
+            </div>
+            {isMySpeakerTurn && (
+              <span className="text-[10px] font-black uppercase text-amber-300 bg-amber-950/80 px-2 py-0.5 rounded border border-amber-500/40">
+                You
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Mobile Player Grid (2 columns on small phone, 3 on larger phone) */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 w-full pt-1">
           {players.map((player) => {
             const isCurrentUser = player.user_id === currentUserId;
             const isCurrentSpeaker = player.user_id === currentRound?.active_speaker_id && phase === 'CLUE_ROUND';
@@ -261,6 +321,7 @@ export const VirtualRoundTable: React.FC<VirtualRoundTableProps> = ({
                 revealedRole={revealedRole}
                 votesReceived={votesReceived}
                 isMostVoted={isMostVoted}
+                compact={true}
               />
             );
           })}
@@ -273,53 +334,53 @@ export const VirtualRoundTable: React.FC<VirtualRoundTableProps> = ({
 function formatPhaseName(phase: GamePhase): string {
   switch (phase) {
     case 'WAITING_ROOM':
-      return 'Lobby • Gathering Players';
+      return 'Lobby Gathering';
     case 'DEALING_CARDS':
       return 'Dealing Secret Cards';
     case 'CARD_REVEAL':
-      return 'Private Card Check';
+      return 'Inspect Your Card';
     case 'CLUE_ROUND':
-      return 'Clue Giving Phase';
+      return 'Giving Clues';
     case 'DISCUSSION':
-      return 'Floor Open • Discussion';
+      return 'Group Discussion';
     case 'VOTING':
-      return 'Cast Your Vote';
+      return 'Voting Stage';
     case 'VOTE_REVEAL':
-      return 'Tallying the Votes';
+      return 'Vote Tally';
     case 'IMPOSTER_GUESS':
-      return 'Last Chance Word Guess';
+      return 'Last Chance Guess';
     case 'ROUND_RESULTS':
       return 'Round Complete';
     case 'MATCH_RESULTS':
-      return 'Match Leaderboard';
+      return 'Match Victory';
     default:
       return 'Playing Round';
   }
 }
 
-function getPhaseDescription(phase: GamePhase, speakerName?: string, isMyTurn?: boolean): string {
+function getPhaseDirectInstruction(phase: GamePhase, speakerName?: string, isMyTurn?: boolean): string {
   switch (phase) {
     case 'WAITING_ROOM':
-      return 'Get ready! Host will launch when everyone is in.';
+      return 'Waiting for all players to take their seats.';
     case 'DEALING_CARDS':
-      return 'Assigning roles secretly...';
+      return 'Distributing confidential cards to every player.';
     case 'CARD_REVEAL':
-      return 'Check your private card and keep it hidden!';
+      return 'Waiting for all players to reveal their cards.';
     case 'CLUE_ROUND':
-      if (isMyTurn) return 'It is YOUR turn! Give a subtle clue aloud or in chat.';
-      if (speakerName) return `${speakerName} is giving their clue! Listen closely.`;
-      return 'Players are giving one clue in turn.';
+      if (isMyTurn) return 'It is your turn to give a clue! Speak aloud.';
+      if (speakerName) return `It's ${speakerName}'s turn to give a clue. Listen closely!`;
+      return 'Players are giving clues around the table.';
     case 'DISCUSSION':
-      return 'Discuss who gave suspicious clues and who seems to be bluffing!';
+      return 'Discuss who you think is the Imposter.';
     case 'VOTING':
-      return 'Vote for the player you suspect is the Imposter.';
+      return 'Select one player to vote for.';
     case 'VOTE_REVEAL':
-      return 'Revealing who received the most votes!';
+      return 'Votes are locked. Revealing results…';
     case 'IMPOSTER_GUESS':
-      return 'The Imposter was caught! They have one last chance to guess the secret word.';
+      return 'The Imposter was caught! Last chance word guess.';
     case 'ROUND_RESULTS':
-      return 'Scores awarded for this round!';
+      return 'Round results and scores awarded!';
     default:
-      return '';
+      return 'Follow the gameplay prompts.';
   }
 }

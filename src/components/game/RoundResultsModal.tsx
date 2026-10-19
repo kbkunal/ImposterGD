@@ -4,7 +4,7 @@ import { GameRound, Match, RoomPlayer } from '../../types/game';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { Avatar } from '../ui/Avatar';
-import { Trophy, Skull, Shield, RotateCcw, Home, Sparkles } from 'lucide-react';
+import { Trophy, Skull, Shield, RotateCcw, Home, Sparkles, Award } from 'lucide-react';
 
 export interface RoundResultsModalProps {
   isOpen: boolean;
@@ -30,20 +30,22 @@ export const RoundResultsModal: React.FC<RoundResultsModalProps> = ({
   const winner = round.winner;
   const isImposterWinner = winner === 'IMPOSTER' || winner === 'TIE_ESCAPED';
   const imposterId = round.imposter_user_ids[0];
-  const imposterPlayer = players.find(p => p.user_id === imposterId);
+  const imposterPlayer = players.find((p) => p.user_id === imposterId);
 
-  // Trigger confetti if normal players won or current user won as imposter
+  // Trigger celebratory confetti on victory
   useEffect(() => {
     if (isOpen) {
       try {
         confetti({
-          particleCount: 70,
-          spread: 60,
+          particleCount: 80,
+          spread: 70,
           origin: { y: 0.6 },
-          colors: isImposterWinner ? ['#F43F5E', '#FB7185', '#E11D48'] : ['#8B5CF6', '#38BDF8', '#F59E0B'],
+          colors: isImposterWinner
+            ? ['#F43F5E', '#FB7185', '#E11D48', '#FDA4AF']
+            : ['#8B5CF6', '#38BDF8', '#F59E0B', '#10B981'],
         });
       } catch {
-        // ignore
+        // ignore if canvas not supported
       }
     }
   }, [isOpen, isImposterWinner]);
@@ -54,72 +56,81 @@ export const RoundResultsModal: React.FC<RoundResultsModalProps> = ({
     <Modal
       isOpen={isOpen}
       onClose={() => {}}
-      title="Round Debrief & Results"
+      title="Round Results & Debrief"
       maxWidth="lg"
       showCloseButton={false}
     >
-      <div className="space-y-6 text-center">
+      <div className="space-y-5 text-center">
         {/* Winner Banner */}
         <div
-          className={`p-5 rounded-2xl border text-center ${
+          className={`p-5 sm:p-6 rounded-3xl border-2 text-center transition-all shadow-xl ${
             isImposterWinner
-              ? 'bg-rose-950/40 border-rose-500/50 text-rose-200'
-              : 'bg-emerald-950/40 border-emerald-500/50 text-emerald-200'
+              ? 'bg-rose-950/40 border-rose-500/60 text-rose-200 shadow-rose-900/30'
+              : 'bg-emerald-950/40 border-emerald-500/60 text-emerald-200 shadow-emerald-900/30'
           }`}
         >
-          <div className="w-14 h-14 mx-auto rounded-full bg-slate-900/60 flex items-center justify-center mb-2 shadow-inner">
+          <div className="w-16 h-16 mx-auto rounded-3xl bg-slate-900/80 border-2 border-white/10 flex items-center justify-center mb-3 shadow-inner">
             {isImposterWinner ? (
-              <Skull className="w-8 h-8 text-rose-400" />
+              <Skull className="w-9 h-9 text-rose-400 animate-pulse" />
             ) : (
-              <Trophy className="w-8 h-8 text-amber-400" />
+              <Trophy className="w-9 h-9 text-amber-400 animate-bounce" />
             )}
           </div>
-          <h3 className="text-xl sm:text-2xl font-black uppercase tracking-wide">
-            {winner === 'NORMAL_PLAYERS' && 'Normal Players Win!'}
-            {winner === 'IMPOSTER' && 'The Imposter Fooled Everyone!'}
-            {winner === 'TIE_ESCAPED' && 'Tie Vote! Imposter Escapes!'}
-          </h3>
-          <p className="text-xs text-slate-300 mt-1">
-            {winner === 'NORMAL_PLAYERS' && 'The crew successfully found and voted out the Imposter.'}
+          <h2 className="text-xl sm:text-3xl font-black uppercase tracking-tight">
+            {winner === 'NORMAL_PLAYERS' && 'Crewmates Win!'}
+            {winner === 'IMPOSTER' && 'The Imposter Duped Everyone!'}
+            {winner === 'TIE_ESCAPED' && 'Tie Vote! Imposter Vanished!'}
+          </h2>
+          <p className="text-xs sm:text-sm text-slate-300 mt-1 max-w-md mx-auto">
+            {winner === 'NORMAL_PLAYERS' && 'The crew successfully detected and eliminated the Imposter!'}
             {winner === 'IMPOSTER' &&
               (round.last_chance_correct
-                ? `${imposterPlayer?.profile.display_name} guessed the secret word on their last chance!`
-                : `${imposterPlayer?.profile.display_name} survived undetected!`)}
-            {winner === 'TIE_ESCAPED' && 'Votes were split evenly; the Imposter slipped away.'}
+                ? `${imposterPlayer?.profile.display_name} was caught, but correctly guessed the secret word on last chance!`
+                : `${imposterPlayer?.profile.display_name} successfully blended in without being caught!`)}
+            {winner === 'TIE_ESCAPED' && 'Votes were split evenly; the Imposter slipped away unnoticed!'}
           </p>
         </div>
 
-        {/* Secret Word & Hint Reveal */}
-        <div className="grid grid-cols-2 gap-3 bg-[#090D1A] p-4 rounded-2xl border border-slate-800 text-left">
-          <div>
-            <span className="text-[10px] font-black uppercase tracking-wider text-cyan-400">
+        {/* Word Reveal Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="bg-[#0D1224] p-4 rounded-3xl border-2 border-cyan-500/40 text-left shadow-lg">
+            <span className="text-[10px] font-black uppercase tracking-wider text-cyan-400 block">
               The Secret Word
             </span>
-            <h4 className="text-xl sm:text-2xl font-black text-white uppercase mt-0.5">
+            <span className="text-2xl sm:text-3xl font-black text-white uppercase block mt-1 tracking-wide">
               {round.secret_word || 'UNKNOWN'}
-            </h4>
-            <span className="text-[10px] text-slate-400">Category: {round.category}</span>
+            </span>
+            <span className="text-[11px] font-bold text-slate-400 mt-1 block">
+              Category: <span className="text-cyan-300">{round.category}</span>
+            </span>
           </div>
 
-          <div>
-            <span className="text-[10px] font-black uppercase tracking-wider text-rose-400">
-              The Imposter's Hint
+          <div className="bg-[#0D1224] p-4 rounded-3xl border-2 border-rose-500/40 text-left shadow-lg">
+            <span className="text-[10px] font-black uppercase tracking-wider text-rose-400 block">
+              The Imposter
             </span>
-            <h4 className="text-xl sm:text-2xl font-black text-rose-300 uppercase mt-0.5">
-              {round.revealed_hint || 'NO HINT'}
-            </h4>
-            <span className="text-[10px] text-slate-400">
-              Imposter: {imposterPlayer?.profile.display_name}
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-2xl sm:text-3xl font-black text-rose-300 uppercase block tracking-wide truncate">
+                {imposterPlayer?.profile.display_name || 'Imposter'}
+              </span>
+            </div>
+            <span className="text-[11px] font-bold text-slate-400 mt-1 block">
+              Given Hint: <span className="text-rose-400 font-extrabold">{round.revealed_hint || 'NO HINT'}</span>
             </span>
           </div>
         </div>
 
-        {/* Player Scores & Standings */}
+        {/* Match Standings Scoreboard */}
         <div className="space-y-2 text-left">
-          <h5 className="text-xs font-black uppercase tracking-wider text-slate-400">
-            Current Match Standings (Round {round.round_number})
-          </h5>
-          <div className="divide-y divide-slate-800/80 bg-[#0E1428] rounded-2xl border border-slate-800 p-2 max-h-48 overflow-y-auto">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+              <Award className="w-4 h-4 text-amber-400" />
+              Match Standings (Round {round.round_number})
+            </h3>
+            <span className="text-[11px] font-bold text-slate-500">Points Summary</span>
+          </div>
+
+          <div className="divide-y divide-slate-800/80 bg-[#0B0F1E] rounded-3xl border-2 border-slate-800 p-2 sm:p-3 max-h-52 overflow-y-auto space-y-1">
             {players
               .slice()
               .sort((a, b) => (match.scores[b.user_id] || 0) - (match.scores[a.user_id] || 0))
@@ -129,9 +140,13 @@ export const RoundResultsModal: React.FC<RoundResultsModalProps> = ({
                 const isImposter = p.user_id === imposterId;
 
                 return (
-                  <div key={p.user_id} className="flex items-center justify-between p-2">
-                    <div className="flex items-center gap-3">
-                      <span className="text-xs font-black text-slate-500 w-4">{idx + 1}.</span>
+                  <div key={p.user_id} className="flex items-center justify-between p-2 rounded-2xl hover:bg-slate-900/50 transition-colors">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className={`text-xs font-black w-5 text-center ${
+                        idx === 0 ? 'text-amber-400' : idx === 1 ? 'text-slate-300' : 'text-slate-500'
+                      }`}>
+                        #{idx + 1}
+                      </span>
                       <Avatar
                         avatarId={p.profile.avatar_id}
                         avatarBackground={p.profile.avatar_background}
@@ -139,22 +154,30 @@ export const RoundResultsModal: React.FC<RoundResultsModalProps> = ({
                         size="xs"
                         showBorder={false}
                       />
-                      <div>
-                        <span className="text-xs font-bold text-white block">
+                      <div className="min-w-0 truncate">
+                        <span className="text-xs font-black text-white truncate block">
                           {p.profile.display_name}
-                          {p.user_id === currentUserId && <span className="text-purple-400 ml-1">(You)</span>}
+                          {p.user_id === currentUserId && (
+                            <span className="text-purple-400 text-[10px] ml-1.5 font-bold uppercase">(You)</span>
+                          )}
                         </span>
-                        <span className="text-[10px] text-slate-400">
-                          {isImposter ? 'Imposter' : 'Player'}
+                        <span className={`text-[10px] font-black uppercase ${
+                          isImposter ? 'text-rose-400' : 'text-cyan-400'
+                        }`}>
+                          {isImposter ? 'Imposter' : 'Crewmate'}
                         </span>
                       </div>
                     </div>
 
-                    <div className="text-right">
-                      <span className="text-sm font-black text-amber-400 block">{totalScore} pts</span>
+                    <div className="text-right flex items-center gap-2">
                       {earnedThisRound > 0 && (
-                        <span className="text-[10px] font-bold text-emerald-400">+{earnedThisRound}</span>
+                        <span className="text-xs font-black text-emerald-400 bg-emerald-950/60 border border-emerald-500/40 px-2 py-0.5 rounded-lg">
+                          +{earnedThisRound}
+                        </span>
                       )}
+                      <span className="text-sm font-black text-amber-400 min-w-[50px] text-right">
+                        {totalScore} pts
+                      </span>
                     </div>
                   </div>
                 );
@@ -165,30 +188,35 @@ export const RoundResultsModal: React.FC<RoundResultsModalProps> = ({
         {/* Action Controls */}
         <div className="flex flex-col sm:flex-row items-center justify-end gap-3 pt-3 border-t border-slate-800">
           <Button
-            variant="secondary"
+            variant="ghost"
             size="md"
             icon={<Home className="w-4 h-4" />}
             onClick={onReturnToLobby}
             fullWidth
+            className="sm:w-auto"
           >
-            Return to Lobby
+            Leave to Lobby
           </Button>
 
           {isHost ? (
             <Button
               variant="primary"
-              size="md"
-              icon={<RotateCcw className="w-4 h-4" />}
+              size="lg"
+              icon={<RotateCcw className="w-5 h-5" />}
               onClick={onPlayAgain}
               fullWidth
+              className="sm:w-auto text-base font-black px-6"
             >
               Start Next Round →
             </Button>
           ) : (
-            <p className="text-xs text-slate-400 italic">Waiting for host to launch next round...</p>
+            <div className="py-2 text-xs font-bold text-slate-400 italic">
+              Waiting for host to begin the next round...
+            </div>
           )}
         </div>
       </div>
     </Modal>
   );
 };
+

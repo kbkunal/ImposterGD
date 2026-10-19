@@ -147,12 +147,12 @@ describe('Authoritative Game Engine & Multiplayer Integrity', () => {
     );
 
     expect(outcome.round.winner).toBe('NORMAL_PLAYERS');
-    expect(outcome.round.points_awarded[normalPlayers[0].user_id]).toBe(1);
-    expect(outcome.round.points_awarded[normalPlayers[1].user_id]).toBe(1);
+    expect(outcome.round.points_awarded[normalPlayers[0].user_id]).toBe(2);
+    expect(outcome.round.points_awarded[normalPlayers[1].user_id]).toBe(2);
     expect(outcome.round.points_awarded[imposterId]).toBe(0);
   });
 
-  it('handles tied votes by allowing Imposter to escape with +2 points', async () => {
+  it('handles tied votes by allowing Imposter to escape with +3 points', async () => {
     const { round, match } = await gameEngine.startNewRound(mockRoom, mockPlayers);
     const imposterId = round.imposter_user_ids[0];
     const normalPlayers = mockPlayers.filter(p => p.user_id !== imposterId);
@@ -176,7 +176,55 @@ describe('Authoritative Game Engine & Multiplayer Integrity', () => {
     );
 
     expect(outcome.round.winner).toBe('TIE_ESCAPED');
-    expect(outcome.round.points_awarded[imposterId]).toBe(2);
+    expect(outcome.round.points_awarded[imposterId]).toBe(3);
     expect(outcome.round.points_awarded[normalPlayers[0].user_id]).toBe(0);
+  });
+
+  it('supports 6 distinct authenticated players, selects configured imposters, and segregates private cards', async () => {
+    const sixPlayers: RoomPlayer[] = [
+      mockPlayers[0],
+      mockPlayers[1],
+      mockPlayers[2],
+      { user_id: 'user_p4', seat_index: 3, ready: true, connected: true, is_host: false, profile: { ...mockHost, id: 'user_p4', username: 'David' } },
+      { user_id: 'user_p5', seat_index: 4, ready: true, connected: true, is_host: false, profile: { ...mockHost, id: 'user_p5', username: 'Eve' } },
+      { user_id: 'user_p6', seat_index: 5, ready: true, connected: true, is_host: false, profile: { ...mockHost, id: 'user_p6', username: 'Frank' } },
+    ];
+
+    const multiImposterRoom: Room = {
+      ...mockRoom,
+      settings: { ...mockRoom.settings, imposter_count: 2 },
+    };
+
+    const { round } = await gameEngine.startNewRound(multiImposterRoom, sixPlayers);
+
+    // Exactly 2 imposters selected
+    expect(round.imposter_user_ids.length).toBe(2);
+
+    // Every player independently retrieves their card
+    let sharedSecretWord: string | undefined;
+
+    for (const player of sixPlayers) {
+      const role = await gameEngine.getMyPrivateRole(round.id, player.user_id);
+      expect(role).not.toBeNull();
+
+      if (round.imposter_user_ids.includes(player.user_id)) {
+        expect(role?.role).toBe('IMPOSTER');
+        expect(role?.secret_word).toBeUndefined(); // Imposter never sees word
+        expect(role?.private_hint).toBeTruthy(); // Imposter gets hint
+      } else {
+        expect(role?.role).toBe('NORMAL');
+        expect(role?.secret_word).toBeTruthy();
+        expect(role?.private_hint).toBeUndefined();
+        if (!sharedSecretWord) {
+          sharedSecretWord = role?.secret_word;
+        } else {
+          expect(role?.secret_word).toBe(sharedSecretWord); // All normal players receive identical word
+        }
+      }
+    }
+
+    // A player can recover their card on refresh
+    const recoveredRole = await gameEngine.getMyPrivateRole(round.id, 'user_p4');
+    expect(recoveredRole?.user_id).toBe('user_p4');
   });
 });

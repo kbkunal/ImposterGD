@@ -2,7 +2,7 @@ import React from 'react';
 import { soundEngine } from '../../services/game/soundEngine';
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'secondary' | 'danger' | 'success' | 'amber' | 'ghost';
+  variant?: 'primary' | 'secondary' | 'danger' | 'success' | 'amber' | 'cyan' | 'ghost';
   size?: 'sm' | 'md' | 'lg';
   isLoading?: boolean;
   icon?: React.ReactNode;
@@ -30,21 +30,30 @@ export const Button: React.FC<ButtonProps> = ({
     onClick?.(e);
   };
 
-  const baseStyles = 'relative inline-flex items-center justify-center font-bold tracking-wide rounded-xl transition-all duration-200 active:scale-95 disabled:opacity-50 disabled:pointer-events-none focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[#080B14] select-none';
+  const baseStyles =
+    'relative inline-flex items-center justify-center font-black tracking-wide rounded-2xl select-none transition-all duration-150 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 disabled:pointer-events-none focus:outline-none focus-visible:ring-4 focus-visible:ring-offset-2 focus-visible:ring-offset-[#080B14] active:translate-y-[2px] shadow-md';
 
   const sizeStyles = {
-    sm: 'text-xs px-3.5 py-1.5 gap-1.5 min-h-[34px]',
-    md: 'text-sm px-5 py-2.5 gap-2 min-h-[42px]',
-    lg: 'text-base px-7 py-3.5 gap-2.5 min-h-[50px]',
+    sm: 'text-xs px-3.5 py-2 gap-1.5 min-h-[40px]',
+    md: 'text-sm px-5 py-2.5 gap-2 min-h-[46px]',
+    lg: 'text-base sm:text-lg px-7 py-3.5 gap-2.5 min-h-[54px]',
   }[size];
 
   const variantStyles = {
-    primary: 'bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-500 hover:from-purple-500 hover:to-indigo-500 text-white shadow-lg shadow-purple-600/30 hover:shadow-purple-600/50 border border-purple-400/30 focus:ring-purple-500',
-    secondary: 'bg-slate-800/80 hover:bg-slate-700/80 text-slate-200 hover:text-white border border-slate-700/80 shadow-md backdrop-blur-sm focus:ring-slate-500',
-    danger: 'bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white shadow-lg shadow-rose-600/30 hover:shadow-rose-600/50 border border-rose-400/30 focus:ring-rose-500',
-    success: 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-lg shadow-emerald-600/30 hover:shadow-emerald-600/50 border border-emerald-400/30 focus:ring-emerald-500',
-    amber: 'bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-slate-950 font-black shadow-lg shadow-amber-500/30 hover:shadow-amber-500/50 border border-amber-300/40 focus:ring-amber-400',
-    ghost: 'bg-transparent hover:bg-slate-800/60 text-slate-300 hover:text-white border border-transparent focus:ring-purple-500',
+    primary:
+      'bg-gradient-to-b from-[#9333EA] to-[#7928CA] hover:from-[#A855F7] hover:to-[#8B2BE2] text-white border-t border-purple-400/40 border-b-4 border-[#581C87] shadow-purple-950/60 hover:shadow-purple-700/50 focus-visible:ring-purple-400',
+    secondary:
+      'bg-gradient-to-b from-[#1E293B] to-[#0F172A] hover:from-[#334155] hover:to-[#1E293B] text-slate-200 hover:text-white border-t border-slate-600/40 border-b-4 border-[#090D16] shadow-black/60 focus-visible:ring-slate-400',
+    amber:
+      'bg-gradient-to-b from-[#F59E0B] to-[#D97706] hover:from-[#FBBF24] hover:to-[#F59E0B] text-slate-950 border-t border-amber-200/50 border-b-4 border-[#92400E] shadow-amber-950/60 hover:shadow-amber-600/40 focus-visible:ring-amber-300',
+    cyan:
+      'bg-gradient-to-b from-[#0EA5E9] to-[#0284C7] hover:from-[#38BDF8] hover:to-[#0EA5E9] text-white border-t border-sky-300/40 border-b-4 border-[#0369A1] shadow-sky-950/60 focus-visible:ring-cyan-400',
+    success:
+      'bg-gradient-to-b from-[#10B981] to-[#059669] hover:from-[#34D399] hover:to-[#10B981] text-white border-t border-emerald-300/40 border-b-4 border-[#047857] shadow-emerald-950/60 focus-visible:ring-emerald-400',
+    danger:
+      'bg-gradient-to-b from-[#F43F5E] to-[#E11D48] hover:from-[#FB7185] hover:to-[#F43F5E] text-white border-t border-rose-300/40 border-b-4 border-[#9F1239] shadow-rose-950/60 focus-visible:ring-rose-400',
+    ghost:
+      'bg-transparent hover:bg-slate-800/60 text-slate-300 hover:text-white border border-transparent hover:border-slate-700/80 shadow-none focus-visible:ring-purple-400 active:translate-y-0',
   }[variant];
 
   return (
@@ -55,12 +64,12 @@ export const Button: React.FC<ButtonProps> = ({
       {...props}
     >
       {isLoading ? (
-        <span className="flex items-center gap-2">
-          <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-current" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        <span className="inline-flex items-center gap-2">
+          <svg className="animate-spin h-4 w-4 text-current" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
           </svg>
-          Loading...
+          <span>Loading...</span>
         </span>
       ) : (
         <>

@@ -118,65 +118,98 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         </div>
       </div>
 
-      {/* Main Action Cards: Create Game & Join Game */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {/* Main Action Cards: Create Game, Join Game, and Offline Pass & Play */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
         {/* Create Game Card */}
-        <div className="relative overflow-hidden bg-gradient-to-br from-[#1C1636] to-[#100E26] border-2 border-purple-500/40 rounded-3xl p-6 sm:p-8 shadow-2xl flex flex-col justify-between group hover:border-purple-400/70 transition-all">
-          <div className="space-y-3 relative z-10">
-            <div className="w-12 h-12 rounded-2xl bg-purple-600 text-white flex items-center justify-center shadow-lg shadow-purple-600/40">
-              <Plus className="w-6 h-6" />
+        <div className="relative overflow-hidden bg-gradient-to-br from-[#1C1636] to-[#100E26] border-2 border-purple-500/40 rounded-3xl p-6 shadow-2xl flex flex-col justify-between group hover:border-purple-400/70 transition-all">
+          <div className="space-y-2.5 relative z-10">
+            <div className="w-11 h-11 rounded-2xl bg-purple-600 text-white flex items-center justify-center shadow-lg shadow-purple-600/40">
+              <Plus className="w-5 h-5" />
             </div>
-            <h3 className="text-2xl font-black text-white">Host a Game Room</h3>
-            <p className="text-xs sm:text-sm text-slate-300">
-              Create a custom private or public table. Configure word categories, difficulty, clue timers, and invite your friends.
+            <h3 className="text-xl font-black text-white">Host Online Room</h3>
+            <p className="text-xs text-slate-300">
+              Create a private or public room. Configure categories and invite friends via link or code.
             </p>
           </div>
 
-          <div className="pt-6 relative z-10">
+          <div className="pt-4 relative z-10">
             <Button
-              size="lg"
+              size="md"
               variant="primary"
               icon={<Play className="w-4 h-4 fill-current" />}
               onClick={() => onNavigate('create-room')}
               fullWidth
             >
-              Create New Room
+              Create Room
             </Button>
           </div>
         </div>
 
         {/* Join With Code Card */}
-        <div className="bg-[#11172E] border-2 border-cyan-500/30 rounded-3xl p-6 sm:p-8 shadow-2xl flex flex-col justify-between hover:border-cyan-400/60 transition-all">
-          <div className="space-y-3">
-            <div className="w-12 h-12 rounded-2xl bg-cyan-600 text-white flex items-center justify-center shadow-lg shadow-cyan-600/40">
-              <Hash className="w-6 h-6" />
+        <div className="bg-[#11172E] border-2 border-cyan-500/30 rounded-3xl p-6 shadow-2xl flex flex-col justify-between hover:border-cyan-400/60 transition-all">
+          <div className="space-y-2.5">
+            <div className="w-11 h-11 rounded-2xl bg-cyan-600 text-white flex items-center justify-center shadow-lg shadow-cyan-600/40">
+              <Hash className="w-5 h-5" />
             </div>
-            <h3 className="text-2xl font-black text-white">Join with Room Code</h3>
-            <p className="text-xs sm:text-sm text-slate-300">
-              Have a 6-letter room code from your host? Enter it below to take a seat at the table immediately.
+            <h3 className="text-xl font-black text-white">Join with Code</h3>
+            <p className="text-xs text-slate-300">
+              Have a 6-letter room code from your host? Enter it below to take a seat immediately.
             </p>
           </div>
 
-          <form onSubmit={handleJoinWithCode} className="space-y-3 pt-4">
+          <form onSubmit={handleJoinWithCode} className="space-y-2.5 pt-3">
             <div className="flex gap-2">
               <Input
                 value={roomCodeInput}
                 onChange={(e) => setRoomCodeInput(e.target.value.toUpperCase())}
-                placeholder="e.g. 7X9K2B"
+                placeholder="ROOM CODE"
                 maxLength={8}
-                className="font-mono text-center text-base tracking-widest uppercase font-bold"
+                className="font-mono text-center text-sm tracking-widest uppercase font-bold"
               />
               <Button
                 type="submit"
                 variant="amber"
                 isLoading={isJoining}
                 disabled={roomCodeInput.trim().length < 3}
+                size="sm"
               >
                 Join
               </Button>
             </div>
-            {joinError && <p className="text-xs text-rose-400 font-medium">{joinError}</p>}
+            {joinError && <p className="text-[11px] text-rose-400 font-medium">{joinError}</p>}
           </form>
+        </div>
+
+        {/* Pass & Play (Offline) Card */}
+        <div
+          onClick={() => onNavigate('offline-setup')}
+          className="relative overflow-hidden bg-gradient-to-br from-[#0B253D] to-[#071321] border-2 border-emerald-500/30 rounded-3xl p-6 shadow-2xl flex flex-col justify-between group hover:border-emerald-400/70 transition-all cursor-pointer"
+        >
+          <div className="space-y-2.5 relative z-10">
+            <div className="w-11 h-11 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shadow-lg shadow-emerald-600/40">
+              <Users className="w-5 h-5" />
+            </div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-xl font-black text-white">Pass & Play</h3>
+              <span className="text-[10px] font-black uppercase text-emerald-300 bg-emerald-950/80 px-2 py-0.5 rounded-full border border-emerald-500/40">
+                Offline
+              </span>
+            </div>
+            <p className="text-xs text-slate-300">
+              Play together on one laptop, tablet, or phone. Secret card handover screen protects your identity.
+            </p>
+          </div>
+
+          <div className="pt-4 relative z-10">
+            <Button
+              size="md"
+              variant="success"
+              icon={<ArrowRight className="w-4 h-4" />}
+              fullWidth
+            >
+              Start Pass & Play
+            </Button>
+          </div>
         </div>
       </div>
 

@@ -34,6 +34,10 @@ export const GamePage: React.FC<GamePageProps> = ({ onNavigate }) => {
     myVoteTargetId,
     cluesHistory,
     hasAcknowledgedCard,
+    isCardLoading,
+    cardError,
+    retryFetchCard,
+    recoverActiveRound,
     acknowledgeCardViewed,
     submitTextClue,
     advanceSpeakerTurn,
@@ -48,27 +52,44 @@ export const GamePage: React.FC<GamePageProps> = ({ onNavigate }) => {
   const [showCardModal, setShowCardModal] = useState(false);
   const [selectedVoteTargetId, setSelectedVoteTargetId] = useState<string | null>(null);
 
+  // Auto-recovery if user refreshes page while in an active match
+  useEffect(() => {
+    if (!currentRound && currentRoom && user) {
+      recoverActiveRound(currentRoom.id, user.id);
+    }
+  }, [currentRound, currentRoom?.id, user?.id, recoverActiveRound]);
+
   // Auto-open Card Reveal modal once when DEALING_CARDS or CARD_REVEAL initiates
   useEffect(() => {
     if (
       currentRound &&
       ['DEALING_CARDS', 'CARD_REVEAL'].includes(currentRound.phase) &&
-      !hasAcknowledgedCard &&
-      myPrivateRole
+      !hasAcknowledgedCard
     ) {
       setShowCardModal(true);
     }
-  }, [currentRound?.phase, hasAcknowledgedCard, myPrivateRole]);
+  }, [currentRound?.phase, hasAcknowledgedCard]);
 
-  // Handle phase advance from DEALING_CARDS to CARD_REVEAL or CLUE_ROUND
+  // Handle phase advance from DEALING_CARDS to CARD_REVEAL
   useEffect(() => {
     if (currentRound?.phase === 'DEALING_CARDS' && currentRoom?.host_id === user?.id) {
       const timer = setTimeout(() => {
         advancePhase('CARD_REVEAL');
-      }, 2500);
+      }, 1500);
       return () => clearTimeout(timer);
     }
   }, [currentRound?.phase, currentRoom?.host_id, user?.id, advancePhase]);
+
+  const totalPlayersCount = players.length;
+  const acknowledgedCount = players.filter(p => p.card_viewed).length;
+  const allPlayersAcknowledged = totalPlayersCount > 0 && acknowledgedCount >= totalPlayersCount;
+
+  // Auto-advance to CLUE_ROUND once all connected players have acknowledged their cards
+  useEffect(() => {
+    if (currentRoom?.host_id === user?.id && currentRound?.phase === 'CARD_REVEAL' && allPlayersAcknowledged) {
+      advancePhase('CLUE_ROUND');
+    }
+  }, [currentRoom?.host_id, user?.id, currentRound?.phase, allPlayersAcknowledged, advancePhase]);
 
   if (!currentRoom || !currentRound || !user || !currentMatch) {
     return (
@@ -89,8 +110,8 @@ export const GamePage: React.FC<GamePageProps> = ({ onNavigate }) => {
     await acknowledgeCardViewed(user.id);
     setShowCardModal(false);
 
-    // If host, automatically transition to CLUE_ROUND
-    if (isHost && phase === 'CARD_REVEAL') {
+    // If host and everyone already acknowledged, advance immediately
+    if (isHost && phase === 'CARD_REVEAL' && allPlayersAcknowledged) {
       await advancePhase('CLUE_ROUND');
     }
   };
@@ -177,6 +198,39 @@ export const GamePage: React.FC<GamePageProps> = ({ onNavigate }) => {
 
       {/* Dynamic Phase Control Panel (Bottom Arena) */}
       <div className="w-full max-w-2xl mx-auto z-10 pt-2 pb-4">
+        {/* Phase: DEALING_CARDS / CARD_REVEAL */}
+        {['DEALING_CARDS', 'CARD_REVEAL'].includes(phase) && (
+          <div className="bg-[#11172E] border-2 border-purple-500/40 rounded-3xl p-4 sm:p-5 shadow-2xl flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
+            <div>
+              <span className="text-xs font-black uppercase tracking-wider text-purple-400 block">
+                {phase === 'DEALING_CARDS' ? 'Dealing Encrypted Cards...' : 'Secret Card Reveal'}
+              </span>
+              <h4 className="text-sm font-black text-white mt-0.5">
+                Waiting for all players to reveal their cards ({acknowledgedCount}/{totalPlayersCount} ready)
+              </h4>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="primary"
+                icon={<Eye className="w-4 h-4" />}
+                onClick={() => setShowCardModal(true)}
+              >
+                Inspect My Card
+              </Button>
+              {isHost && phase === 'CARD_REVEAL' && (
+                <Button
+                  size="sm"
+                  variant="amber"
+                  onClick={() => advancePhase('CLUE_ROUND')}
+                >
+                  Start Clues Now
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Phase: CLUE_ROUND */}
         {phase === 'CLUE_ROUND' && (
           <CluePhaseTracker
@@ -223,6 +277,10 @@ export const GamePage: React.FC<GamePageProps> = ({ onNavigate }) => {
         privateRole={myPrivateRole}
         onAcknowledgeViewed={handleCardAcknowledged}
         category={currentRound.category}
+        playerName={user.display_name}
+        isLoading={isCardLoading}
+        error={cardError}
+        onRetry={() => retryFetchCard(user.id)}
       />
 
       {/* Imposter Last-Chance Guess Modal */}

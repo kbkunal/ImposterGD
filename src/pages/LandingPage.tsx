@@ -12,6 +12,7 @@ import {
   Sparkles,
   Award,
   Lock,
+  ArrowRight,
 } from 'lucide-react';
 
 export interface LandingPageProps {
@@ -47,26 +48,61 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
           Gather around the virtual table with friends. One player is bluffing with a secret hint, while everyone else knows the word. Can you uncover the imposter before they blend in?
         </p>
 
-        {/* Prominent Action Buttons */}
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
-          <Button
-            size="lg"
-            variant="primary"
-            icon={<Play className="w-5 h-5 fill-current" />}
-            onClick={() => onNavigate('signup')}
-            className="w-full sm:w-auto text-lg px-8 py-4 shadow-purple-600/50"
+        {/* Two Separate Game Modes Selection */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-3xl mx-auto pt-4 text-left">
+          {/* Online Multiplayer */}
+          <div
+            onClick={() => onNavigate('dashboard')}
+            className="p-5 sm:p-6 rounded-3xl bg-gradient-to-br from-[#1C1636] to-[#100E26] border-2 border-purple-500/40 hover:border-purple-400 transition-all shadow-xl cursor-pointer group flex flex-col justify-between space-y-3"
           >
-            Play Now — It's Free!
-          </Button>
+            <div className="space-y-2">
+              <div className="w-10 h-10 rounded-2xl bg-purple-600/30 border border-purple-400/30 text-purple-300 flex items-center justify-center">
+                <Users className="w-5 h-5" />
+              </div>
+              <h3 className="text-xl font-black text-white group-hover:text-purple-300 transition-colors">
+                Online Multiplayer
+              </h3>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                Play across separate devices with a 6-letter room code. Private cards distributed automatically by the server.
+              </p>
+            </div>
+            <Button size="md" variant="primary" icon={<Play className="w-4 h-4 fill-current" />} fullWidth>
+              Play Online
+            </Button>
+          </div>
 
-          <Button
-            size="lg"
-            variant="secondary"
-            icon={<HelpCircle className="w-5 h-5" />}
-            onClick={() => setShowHowToPlay(true)}
-            className="w-full sm:w-auto text-lg px-8 py-4"
+          {/* Offline Pass-and-Play */}
+          <div
+            onClick={() => onNavigate('offline-setup')}
+            className="p-5 sm:p-6 rounded-3xl bg-gradient-to-br from-[#0F2236] to-[#0A1624] border-2 border-cyan-500/40 hover:border-cyan-400 transition-all shadow-xl cursor-pointer group flex flex-col justify-between space-y-3"
           >
-            How to Play
+            <div className="space-y-2">
+              <div className="w-10 h-10 rounded-2xl bg-cyan-600/30 border border-cyan-400/30 text-cyan-300 flex items-center justify-center">
+                <Sparkles className="w-5 h-5" />
+              </div>
+              <h3 className="text-xl font-black text-white group-hover:text-cyan-300 transition-colors">
+                Offline Pass & Play
+              </h3>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                Gather around one phone, tablet, or laptop. No login or internet required. Confidential card handover built-in.
+              </p>
+            </div>
+            <Button size="md" variant="secondary" icon={<ArrowRight className="w-4 h-4" />} fullWidth>
+              Play Pass & Play (No Login)
+            </Button>
+          </div>
+        </div>
+
+        {/* How to play trigger */}
+        <div className="pt-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            icon={<HelpCircle className="w-4 h-4" />}
+            onClick={() => setShowHowToPlay(true)}
+            className="text-slate-400 hover:text-white"
+          >
+            How to Play Rules & Instructions
           </Button>
         </div>
 

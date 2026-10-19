@@ -58,7 +58,6 @@ export const roomService = {
         return { room: null, error: error.message };
       }
 
-      // Add host as first player in room
       await supabase.from('room_players').insert({
         room_id: data.id,
         user_id: host.id,
@@ -70,13 +69,28 @@ export const roomService = {
       return { room: data as Room };
     }
 
-    // Local storage & BroadcastChannel fallback
+    // Try central server API
+    try {
+      const res = await fetch('/api/rooms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ host, roomName: newRoom.name, isPublic, settings, roomCode }),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        const room = json.room as Room;
+        this.broadcastEvent(room.id, { type: 'ROOM_CREATED', room });
+        return { room };
+      }
+    } catch {
+      // fallback to localStorage
+    }
+
     const rawRooms = localStorage.getItem(LOCAL_ROOMS_KEY);
     const rooms: Record<string, Room> = rawRooms ? JSON.parse(rawRooms) : {};
     rooms[newRoom.id] = newRoom;
     localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify(rooms));
 
-    // Save host in room players
     const rawPlayers = localStorage.getItem(LOCAL_ROOM_PLAYERS_KEY);
     const players: Record<string, RoomPlayer[]> = rawPlayers ? JSON.parse(rawPlayers) : {};
     players[newRoom.id] = [
@@ -91,9 +105,7 @@ export const roomService = {
     ];
     localStorage.setItem(LOCAL_ROOM_PLAYERS_KEY, JSON.stringify(players));
 
-    // Broadcast room creation to other tabs
     this.broadcastEvent(newRoom.id, { type: 'ROOM_CREATED', room: newRoom });
-
     return { room: newRoom };
   },
 
@@ -115,6 +127,17 @@ export const roomService = {
       return data as Room;
     }
 
+    // Try central API server first
+    try {
+      const res = await fetch(`/api/rooms/code/${cleanCode}`);
+      if (res.ok) {
+        const json = await res.json();
+        if (json.room) return json.room as Room;
+      }
+    } catch {
+      // fallback to localStorage
+    }
+
     const rawRooms = localStorage.getItem(LOCAL_ROOMS_KEY);
     if (!rawRooms) return null;
     try {
@@ -126,7 +149,7 @@ export const roomService = {
   },
 
   /**
-   * Get public open rooms for the Room Browser
+   * Get public open rooms
    */
   async getPublicRooms(): Promise<Room[]> {
     if (isSupabaseConfigured && supabase) {
@@ -140,6 +163,16 @@ export const roomService = {
 
       if (error) return [];
       return (data || []) as Room[];
+    }
+
+    try {
+      const res = await fetch('/api/rooms/public');
+      if (res.ok) {
+        const json = await res.json();
+        if (json.rooms) return json.rooms as Room[];
+      }
+    } catch {
+      // fallback to localStorage
     }
 
     const rawRooms = localStorage.getItem(LOCAL_ROOMS_KEY);
@@ -159,9 +192,51 @@ export const roomService = {
     room: Room,
     player: UserProfile
   ): Promise<{ success: boolean; players?: RoomPlayer[]; error?: string }> {
-    const players = await this.getRoomPlayers(room.id);
+    if (isSupabaseConfigured && supabase) {
+      const players = await this.getRoomPlayers(room.id);
+      const existing = players.find(p => p.user_id === player.id);
+      if (existing) {
+        return { success: true, players };
+      }
 
-    // Check if already in room
+      if (players.length >= room.settings.max_players) {
+        return { success: false, error: 'Room is already at full capacity' };
+      }
+
+      const { error } = await supabase.from('room_players').insert({
+        room_id: room.id,
+        user_id: player.id,
+        seat_index: players.length,
+        ready: false,
+        connected: true,
+      });
+
+      if (error) return { success: false, error: error.message };
+      const updated = await this.getRoomPlayers(room.id);
+      return { success: true, players: updated };
+    }
+
+    // Try central API server
+    try {
+      const res = await fetch(`/api/rooms/${room.id}/join`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ player }),
+      });
+
+      if (res.ok) {
+        const json = await res.json();
+        this.broadcastEvent(room.id, { type: 'PLAYER_JOINED', player });
+        return { success: true, players: json.players };
+      } else {
+        const json = await res.json();
+        return { success: false, error: json.error || 'Failed to join' };
+      }
+    } catch {
+      // fallback to localStorage
+    }
+
+    const players = await this.getRoomPlayers(room.id);
     const existing = players.find(p => p.user_id === player.id);
     if (existing) {
       return { success: true, players };
@@ -172,22 +247,6 @@ export const roomService = {
     }
 
     const nextSeat = players.length;
-
-    if (isSupabaseConfigured && supabase) {
-      const { error } = await supabase.from('room_players').insert({
-        room_id: room.id,
-        user_id: player.id,
-        seat_index: nextSeat,
-        ready: false,
-        connected: true,
-      });
-
-      if (error) return { success: false, error: error.message };
-      const updated = await this.getRoomPlayers(room.id);
-      return { success: true, players: updated };
-    }
-
-    // Local / multi-tab mode
     const newPlayer: RoomPlayer = {
       user_id: player.id,
       seat_index: nextSeat,
@@ -205,7 +264,6 @@ export const roomService = {
     localStorage.setItem(LOCAL_ROOM_PLAYERS_KEY, JSON.stringify(roomPlayersMap));
 
     this.broadcastEvent(room.id, { type: 'PLAYER_JOINED', player: newPlayer });
-
     return { success: true, players: currentList };
   },
 
@@ -228,7 +286,6 @@ export const roomService = {
 
       if (error) return [];
 
-      // Fetch room host id
       const { data: roomData } = await supabase.from('rooms').select('host_id').eq('id', roomId).single();
       const hostId = roomData?.host_id;
 
@@ -240,6 +297,17 @@ export const roomService = {
         is_host: row.user_id === hostId,
         profile: row.profile as UserProfile,
       }));
+    }
+
+    // Try central API server
+    try {
+      const res = await fetch(`/api/rooms/${roomId}/players`);
+      if (res.ok) {
+        const json = await res.json();
+        if (json.players) return json.players as RoomPlayer[];
+      }
+    } catch {
+      // fallback to localStorage
     }
 
     const rawPlayers = localStorage.getItem(LOCAL_ROOM_PLAYERS_KEY);
@@ -266,6 +334,16 @@ export const roomService = {
       return !error;
     }
 
+    try {
+      await fetch(`/api/rooms/${roomId}/ready`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, ready }),
+      });
+    } catch {
+      // ignore
+    }
+
     const rawPlayers = localStorage.getItem(LOCAL_ROOM_PLAYERS_KEY);
     if (!rawPlayers) return false;
     const roomPlayersMap: Record<string, RoomPlayer[]> = JSON.parse(rawPlayers);
@@ -288,7 +366,6 @@ export const roomService = {
   async leaveRoom(roomId: string, userId: string): Promise<void> {
     if (isSupabaseConfigured && supabase) {
       await supabase.from('room_players').delete().eq('room_id', roomId).eq('user_id', userId);
-      // Host migration if host left
       const remaining = await this.getRoomPlayers(roomId);
       if (remaining.length === 0) {
         await supabase.from('rooms').update({ status: 'CLOSED' }).eq('id', roomId);
@@ -302,6 +379,16 @@ export const roomService = {
       return;
     }
 
+    try {
+      await fetch(`/api/rooms/${roomId}/leave`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId }),
+      });
+    } catch {
+      // ignore
+    }
+
     const rawPlayers = localStorage.getItem(LOCAL_ROOM_PLAYERS_KEY);
     if (!rawPlayers) return;
     const roomPlayersMap: Record<string, RoomPlayer[]> = JSON.parse(rawPlayers);
@@ -312,7 +399,6 @@ export const roomService = {
 
     if (list.length === 0) {
       delete roomPlayersMap[roomId];
-      // Close room
       const rawRooms = localStorage.getItem(LOCAL_ROOMS_KEY);
       if (rawRooms) {
         const rooms = JSON.parse(rawRooms);
@@ -322,11 +408,9 @@ export const roomService = {
         }
       }
     } else {
-      // Re-index seats
       list.forEach((p, idx) => {
         p.seat_index = idx;
       });
-      // Host migration
       if (wasHost && list.length > 0) {
         list[0].is_host = true;
         const rawRooms = localStorage.getItem(LOCAL_ROOMS_KEY);
@@ -349,19 +433,31 @@ export const roomService = {
    * Broadcast real-time events to other browser tabs or devices
    */
   broadcastEvent(roomId: string, payload: any) {
+    // 1. BroadcastChannel for same-origin tabs
     if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
       try {
         const channel = new BroadcastChannel(`imposter_room_${roomId}`);
         channel.postMessage({ ...payload, timestamp: Date.now() });
         channel.close();
       } catch {
-        // BroadcastChannel fallback
+        // ignore
       }
+    }
+
+    // 2. Server API event broadcast for cross-browser, incognito, and network devices
+    try {
+      fetch('/api/game/event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roomId, event: payload }),
+      }).catch(() => {});
+    } catch {
+      // ignore
     }
   },
 
   /**
-   * Subscribe to room events (via Supabase Realtime or BroadcastChannel)
+   * Subscribe to room events (via Server-Sent Events, BroadcastChannel, and Supabase)
    */
   subscribeToRoom(roomId: string, onEvent: (event: any) => void): () => void {
     let supabaseChannel: any = null;
@@ -380,7 +476,7 @@ export const roomService = {
         .subscribe();
     }
 
-    // Also listen on BroadcastChannel for multi-window / multi-tab synchronization
+    // BroadcastChannel for instant same-browser updates
     let localChannel: BroadcastChannel | null = null;
     if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
       try {
@@ -393,12 +489,35 @@ export const roomService = {
       }
     }
 
+    // Server-Sent Events for cross-browser, incognito, and mobile phone sync
+    let sseSource: EventSource | null = null;
+    if (typeof window !== 'undefined' && 'EventSource' in window) {
+      try {
+        sseSource = new EventSource(`/api/events/${roomId}`);
+        sseSource.onmessage = (e) => {
+          try {
+            const data = JSON.parse(e.data);
+            if (data.type !== 'CONNECTED') {
+              onEvent(data);
+            }
+          } catch {
+            // ignore
+          }
+        };
+      } catch {
+        // ignore
+      }
+    }
+
     return () => {
       if (supabaseChannel && supabase) {
         supabase.removeChannel(supabaseChannel);
       }
       if (localChannel) {
         localChannel.close();
+      }
+      if (sseSource) {
+        sseSource.close();
       }
     };
   },

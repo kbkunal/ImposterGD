@@ -1,6 +1,7 @@
 import { supabase, isSupabaseConfigured } from '../supabase/client';
 import { UserProfile } from '../../types/game';
 
+const SESSION_STORAGE_USER_KEY = 'imposter_active_user';
 const LOCAL_STORAGE_USER_KEY = 'imposter_user_session';
 const LOCAL_STORAGE_USERS_DB_KEY = 'imposter_local_users_db';
 const RATE_LIMIT_KEY = 'imposter_login_attempts';
@@ -60,7 +61,6 @@ function checkRateLimit(username: string): { allowed: boolean; waitSeconds?: num
       return { allowed: false, waitSeconds };
     }
 
-    // Reset if last attempt was more than 2 minutes ago
     if (now - tracker.lastAttempt > 120000) {
       sessionStorage.removeItem(`${RATE_LIMIT_KEY}_${username.toLowerCase()}`);
       return { allowed: true };
@@ -83,12 +83,12 @@ function recordFailedLogin(username: string) {
     tracker.lastAttempt = now;
 
     if (tracker.count >= 5) {
-      tracker.blockedUntil = now + 60000; // Block for 60 seconds
+      tracker.blockedUntil = now + 60000;
     }
 
     sessionStorage.setItem(key, JSON.stringify(tracker));
   } catch {
-    // ignore storage issues
+    // ignore
   }
 }
 
@@ -114,9 +114,6 @@ async function hashPassword(password: string): Promise<string> {
   return btoa(password);
 }
 
-/**
- * Converts username to internal secure identity identifier
- */
 function usernameToInternalEmail(username: string): string {
   const sanitized = encodeURIComponent(username.trim().toLowerCase());
   return `${sanitized}@identity.impostergd.internal`;
@@ -142,7 +139,20 @@ export const authService = {
       return Boolean(data);
     }
 
-    // Local / Offline fallback storage
+    // Check central API server first
+    try {
+      const res = await fetch(`/api/users/search?q=${encodeURIComponent(cleanUsername)}`);
+      if (res.ok) {
+        const json = await res.json();
+        const found = (json.users || []).some(
+          (u: any) => u.username.toLowerCase() === cleanUsername
+        );
+        if (found) return true;
+      }
+    } catch {
+      // fallback to localStorage
+    }
+
     const rawDb = localStorage.getItem(LOCAL_STORAGE_USERS_DB_KEY);
     if (!rawDb) return false;
     try {
@@ -194,7 +204,6 @@ export const authService = {
         return { user: null, error: 'Registration failed. Please try again.' };
       }
 
-      // Fetch or assemble profile
       const profile: UserProfile = {
         id: data.user.id,
         username: cleanUsername,
@@ -210,11 +219,33 @@ export const authService = {
         created_at: new Date().toISOString(),
       };
 
+      sessionStorage.setItem(SESSION_STORAGE_USER_KEY, JSON.stringify(profile));
       localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(profile));
       return { user: profile };
     }
 
-    // Local Standalone / Offline mode
+    // Try central server API
+    try {
+      const res = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: cleanUsername, password, displayName: cleanDisplayName }),
+      });
+
+      if (res.ok) {
+        const json = await res.json();
+        const profile = json.user as UserProfile;
+        sessionStorage.setItem(SESSION_STORAGE_USER_KEY, JSON.stringify(profile));
+        localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(profile));
+        return { user: profile };
+      } else {
+        const json = await res.json();
+        if (json.error) return { user: null, error: json.error };
+      }
+    } catch {
+      // fallback to local storage
+    }
+
     const hashedPassword = await hashPassword(password);
     const userId = 'usr_' + Math.random().toString(36).substring(2, 10);
     const profile: UserProfile = {
@@ -233,7 +264,6 @@ export const authService = {
       created_at: new Date().toISOString(),
     };
 
-    // Save user to local DB
     const rawDb = localStorage.getItem(LOCAL_STORAGE_USERS_DB_KEY);
     const db = rawDb ? JSON.parse(rawDb) : {};
     db[cleanUsername.toLowerCase()] = {
@@ -241,6 +271,7 @@ export const authService = {
       passwordHash: hashedPassword,
     };
     localStorage.setItem(LOCAL_STORAGE_USERS_DB_KEY, JSON.stringify(db));
+    sessionStorage.setItem(SESSION_STORAGE_USER_KEY, JSON.stringify(profile));
     localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(profile));
 
     return { user: profile };
@@ -280,7 +311,6 @@ export const authService = {
 
       clearRateLimit(cleanUsername);
 
-      // Fetch profile from database
       const { data: profileData } = await supabase
         .from('profiles')
         .select('*')
@@ -302,11 +332,34 @@ export const authService = {
         created_at: new Date().toISOString(),
       };
 
+      sessionStorage.setItem(SESSION_STORAGE_USER_KEY, JSON.stringify(profile));
       localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(profile));
       return { user: profile };
     }
 
-    // Local / Offline mode check
+    // Try central server API
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: cleanUsername, password }),
+      });
+
+      if (res.ok) {
+        clearRateLimit(cleanUsername);
+        const json = await res.json();
+        const profile = json.user as UserProfile;
+        sessionStorage.setItem(SESSION_STORAGE_USER_KEY, JSON.stringify(profile));
+        localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(profile));
+        return { user: profile };
+      } else {
+        recordFailedLogin(cleanUsername);
+        return { user: null, error: 'Invalid username or password' };
+      }
+    } catch {
+      // fallback to localStorage
+    }
+
     const rawDb = localStorage.getItem(LOCAL_STORAGE_USERS_DB_KEY);
     const db = rawDb ? JSON.parse(rawDb) : {};
     const existing = db[cleanUsername.toLowerCase()];
@@ -326,6 +379,7 @@ export const authService = {
 
     const { passwordHash: _, ...profile } = existing;
     profile.is_online = true;
+    sessionStorage.setItem(SESSION_STORAGE_USER_KEY, JSON.stringify(profile));
     localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(profile));
     return { user: profile as UserProfile };
   },
@@ -334,6 +388,28 @@ export const authService = {
    * Get current authenticated user
    */
   async getCurrentUser(): Promise<UserProfile | null> {
+    // 1. Check current tab's sessionStorage first (allows distinct logins across tabs)
+    const sessionCached = sessionStorage.getItem(SESSION_STORAGE_USER_KEY);
+    if (sessionCached) {
+      try {
+        return JSON.parse(sessionCached) as UserProfile;
+      } catch {
+        // ignore
+      }
+    }
+
+    // 2. Check localStorage
+    const localCached = localStorage.getItem(LOCAL_STORAGE_USER_KEY);
+    if (localCached) {
+      try {
+        const parsed = JSON.parse(localCached) as UserProfile;
+        sessionStorage.setItem(SESSION_STORAGE_USER_KEY, localCached);
+        return parsed;
+      } catch {
+        // ignore
+      }
+    }
+
     if (isSupabaseConfigured && supabase) {
       const { data: sessionData } = await supabase.auth.getSession();
       if (!sessionData.session?.user) {
@@ -349,21 +425,11 @@ export const authService = {
       if (profile) return profile as UserProfile;
     }
 
-    // Check cached session
-    const cached = localStorage.getItem(LOCAL_STORAGE_USER_KEY);
-    if (cached) {
-      try {
-        return JSON.parse(cached) as UserProfile;
-      } catch {
-        return null;
-      }
-    }
-
     return null;
   },
 
   /**
-   * Update player profile (display name, avatar, status message)
+   * Update player profile
    */
   async updateProfile(updates: Partial<UserProfile>): Promise<UserProfile | null> {
     const current = await this.getCurrentUser();
@@ -386,9 +452,19 @@ export const authService = {
           updated_at: new Date().toISOString(),
         })
         .eq('id', current.id);
+    } else {
+      try {
+        await fetch('/api/auth/profile', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: current.id, updates }),
+        });
+      } catch {
+        // ignore
+      }
     }
 
-    // Also update local database and session cache
+    sessionStorage.setItem(SESSION_STORAGE_USER_KEY, JSON.stringify(updatedProfile));
     localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(updatedProfile));
 
     const rawDb = localStorage.getItem(LOCAL_STORAGE_USERS_DB_KEY);
@@ -417,6 +493,7 @@ export const authService = {
     if (isSupabaseConfigured && supabase) {
       await supabase.auth.signOut().catch(() => {});
     }
+    sessionStorage.removeItem(SESSION_STORAGE_USER_KEY);
     localStorage.removeItem(LOCAL_STORAGE_USER_KEY);
   },
 };

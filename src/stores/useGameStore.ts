@@ -24,6 +24,8 @@ interface GameState {
   cluesHistory: ClueEntry[];
   hasAcknowledgedCard: boolean;
   isLoading: boolean;
+  isCardLoading: boolean;
+  cardError: string | null;
   error: string | null;
 
   // Actions
@@ -34,6 +36,8 @@ interface GameState {
   toggleReady: (userId: string, ready: boolean) => Promise<void>;
   startGameRound: (host: UserProfile) => Promise<void>;
   loadMyPrivateRole: (userId: string) => Promise<void>;
+  retryFetchCard: (userId: string) => Promise<void>;
+  recoverActiveRound: (roomId: string, userId: string) => Promise<boolean>;
   acknowledgeCardViewed: (userId: string) => Promise<void>;
   submitTextClue: (user: UserProfile, clueText: string) => Promise<void>;
   advanceSpeakerTurn: () => Promise<void>;
@@ -57,6 +61,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   cluesHistory: [],
   hasAcknowledgedCard: false,
   isLoading: false,
+  isCardLoading: false,
+  cardError: null,
   error: null,
 
   createRoom: async (host, name, isPublic, settings) => {
@@ -160,8 +166,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   startGameRound: async (host) => {
-    const { currentRoom, players, currentMatch } = get();
-    if (!currentRoom) return;
+    const { currentRoom, players, currentMatch, isLoading } = get();
+    if (!currentRoom || isLoading) return;
 
     try {
       set({ isLoading: true, error: null });
@@ -173,14 +179,23 @@ export const useGameStore = create<GameState>((set, get) => ({
         currentMatch || undefined
       );
 
+      // Reset card_viewed on all player models for new round
+      const updatedPlayers = players.map(p => ({
+        ...p,
+        card_viewed: p.user_id === host.id ? false : false,
+      }));
+
       set({
         currentRound: round,
+        players: updatedPlayers,
         myPrivateRole: privateRole,
         currentMatch: match,
         myVoteTargetId: null,
         cluesHistory: [],
         hasAcknowledgedCard: false,
         isLoading: false,
+        isCardLoading: false,
+        cardError: null,
       });
     } catch (err: unknown) {
       set({ isLoading: false, error: (err as Error).message });
@@ -191,20 +206,61 @@ export const useGameStore = create<GameState>((set, get) => ({
     const { currentRound } = get();
     if (!currentRound) return;
 
-    const role = await gameEngine.getMyPrivateRole(currentRound.id, userId);
-    if (role) {
-      set({ myPrivateRole: role });
+    try {
+      set({ isCardLoading: true, cardError: null });
+      const role = await gameEngine.getMyPrivateRole(currentRound.id, userId);
+      if (role) {
+        set({
+          myPrivateRole: role,
+          hasAcknowledgedCard: Boolean(role.card_viewed),
+          isCardLoading: false,
+          cardError: null,
+        });
+      } else {
+        set({
+          isCardLoading: false,
+          cardError: 'Your secret card could not be retrieved from the server. Please tap retry.',
+        });
+      }
+    } catch (err: unknown) {
+      set({
+        isCardLoading: false,
+        cardError: (err as Error).message || 'Card retrieval failed.',
+      });
+    }
+  },
+
+  retryFetchCard: async (userId) => {
+    await get().loadMyPrivateRole(userId);
+  },
+
+  recoverActiveRound: async (roomId, userId) => {
+    try {
+      const active = await gameEngine.getActiveRoundForRoom(roomId);
+      if (active && active.round) {
+        set({
+          currentRound: active.round,
+          currentMatch: active.match,
+        });
+        await get().loadMyPrivateRole(userId);
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
     }
   },
 
   acknowledgeCardViewed: async (userId) => {
-    const { currentRoom, currentRound, myPrivateRole } = get();
+    const { currentRoom, currentRound, myPrivateRole, players } = get();
     if (!currentRoom || !currentRound) return;
 
     await gameEngine.markCardViewed(currentRoom.id, currentRound.id, userId);
+
     set({
       hasAcknowledgedCard: true,
       myPrivateRole: myPrivateRole ? { ...myPrivateRole, card_viewed: true } : null,
+      players: players.map(p => (p.user_id === userId ? { ...p, card_viewed: true } : p)),
     });
   },
 
@@ -381,14 +437,17 @@ export const useGameStore = create<GameState>((set, get) => ({
         }));
       } else if (event.type === 'ROUND_STARTED') {
         soundEngine.playCardDeal();
-        set({
+        set(state => ({
           currentRound: event.round,
           currentMatch: event.match,
+          players: state.players.map(p => ({ ...p, card_viewed: false })),
           myVoteTargetId: null,
           cluesHistory: [],
           hasAcknowledgedCard: false,
-        });
-        // Fetch current user's private role
+          isCardLoading: true,
+          cardError: null,
+        }));
+        // Authoritatively fetch current user's private role
         await get().loadMyPrivateRole(currentUserId);
       } else if (event.type === 'CARD_VIEWED') {
         set(state => ({

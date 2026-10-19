@@ -28,7 +28,19 @@ export const friendService = {
       return (data || []) as UserProfile[];
     }
 
-    // Local DB search
+    // Try central API server (finds users from any tab, incognito, or browser)
+    try {
+      const res = await fetch(`/api/users/search?q=${encodeURIComponent(clean)}&exclude=${encodeURIComponent(currentUserId)}`);
+      if (res.ok) {
+        const json = await res.json();
+        if (json.users && json.users.length > 0) {
+          return json.users as UserProfile[];
+        }
+      }
+    } catch {
+      // fallback
+    }
+
     const rawDb = localStorage.getItem(LOCAL_USERS_DB_KEY);
     if (!rawDb) return [];
     try {
@@ -82,7 +94,17 @@ export const friendService = {
       });
     }
 
-    // Local storage
+    // Try central API server
+    try {
+      const res = await fetch(`/api/social/friends/${currentUserId}`);
+      if (res.ok) {
+        const json = await res.json();
+        if (json.friendships) return json.friendships as Friendship[];
+      }
+    } catch {
+      // fallback
+    }
+
     const raw = localStorage.getItem(LOCAL_FRIENDSHIPS_KEY);
     if (!raw) return [];
     try {
@@ -117,7 +139,6 @@ export const friendService = {
     }
 
     if (isSupabaseConfigured && supabase) {
-      // Check existing friendship
       const { data: existing } = await supabase
         .from('friendships')
         .select('id, status')
@@ -140,7 +161,6 @@ export const friendService = {
 
       if (error) return { success: false, error: error.message };
 
-      // Send notification
       await supabase.from('notifications').insert({
         recipient_id: targetUser.id,
         actor_id: currentUser.id,
@@ -151,7 +171,24 @@ export const friendService = {
       return { success: true };
     }
 
-    // Local storage
+    // Try central API server
+    try {
+      const res = await fetch('/api/social/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentUser, targetUser }),
+      });
+
+      if (res.ok) {
+        return { success: true };
+      } else {
+        const json = await res.json();
+        return { success: false, error: json.error || 'Failed to send friend request' };
+      }
+    } catch {
+      // fallback
+    }
+
     const raw = localStorage.getItem(LOCAL_FRIENDSHIPS_KEY);
     const list: any[] = raw ? JSON.parse(raw) : [];
 
@@ -177,7 +214,6 @@ export const friendService = {
     list.push(newFriendship);
     localStorage.setItem(LOCAL_FRIENDSHIPS_KEY, JSON.stringify(list));
 
-    // Also push notification
     this.addNotification({
       id: 'notif_' + Math.random().toString(36).substring(2, 9),
       recipient_id: targetUser.id,
@@ -205,7 +241,6 @@ export const friendService = {
 
       if (error) return false;
 
-      // Notify requester
       if (data?.requester_id) {
         await supabase.from('notifications').insert({
           recipient_id: data.requester_id,
@@ -215,6 +250,17 @@ export const friendService = {
         });
       }
       return true;
+    }
+
+    try {
+      const res = await fetch('/api/social/accept', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ friendshipId, currentUser }),
+      });
+      if (res.ok) return true;
+    } catch {
+      // fallback
     }
 
     const raw = localStorage.getItem(LOCAL_FRIENDSHIPS_KEY);
@@ -248,6 +294,13 @@ export const friendService = {
       return !error;
     }
 
+    try {
+      const res = await fetch(`/api/social/remove/${friendshipId}`, { method: 'DELETE' });
+      if (res.ok) return true;
+    } catch {
+      // fallback
+    }
+
     const raw = localStorage.getItem(LOCAL_FRIENDSHIPS_KEY);
     if (!raw) return false;
     const list: any[] = JSON.parse(raw);
@@ -272,6 +325,17 @@ export const friendService = {
         },
       });
       return !error;
+    }
+
+    try {
+      const res = await fetch('/api/social/invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentUser, friendUserId, roomCode, roomName }),
+      });
+      if (res.ok) return true;
+    } catch {
+      // fallback
     }
 
     this.addNotification({
@@ -321,6 +385,16 @@ export const friendService = {
       }));
     }
 
+    try {
+      const res = await fetch(`/api/social/notifications/${currentUserId}`);
+      if (res.ok) {
+        const json = await res.json();
+        if (json.notifications) return json.notifications as NotificationItem[];
+      }
+    } catch {
+      // fallback
+    }
+
     const raw = localStorage.getItem(LOCAL_NOTIFICATIONS_KEY);
     if (!raw) return [];
     try {
@@ -340,6 +414,16 @@ export const friendService = {
     if (isSupabaseConfigured && supabase) {
       await supabase.from('notifications').update({ read: true }).eq('id', notifId);
       return;
+    }
+
+    try {
+      await fetch('/api/social/notifications/read', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notifId }),
+      });
+    } catch {
+      // fallback
     }
 
     const raw = localStorage.getItem(LOCAL_NOTIFICATIONS_KEY);

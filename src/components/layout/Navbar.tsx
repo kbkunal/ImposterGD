@@ -65,6 +65,16 @@ export const Navbar: React.FC<NavbarProps> = ({
         {/* Authenticated Nav Controls */}
         {user ? (
           <div className="flex items-center gap-2 sm:gap-3">
+            {/* Pass & Play shortcut */}
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => onNavigate('offline-setup')}
+              className="text-xs font-bold"
+            >
+              Pass & Play
+            </Button>
+
             {/* Quick Play shortcut */}
             <Button
               size="sm"
@@ -268,7 +278,15 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         ) : (
           /* Unauthenticated Navigation Links */
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => onNavigate('offline-setup')}
+              className="text-xs font-bold"
+            >
+              Pass & Play
+            </Button>
             <Button
               size="sm"
               variant="ghost"

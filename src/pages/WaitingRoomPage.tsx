@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useGameStore } from '../stores/useGameStore';
 import { VirtualRoundTable } from '../components/game/VirtualRoundTable';
@@ -24,6 +24,7 @@ export const WaitingRoomPage: React.FC<WaitingRoomPageProps> = ({ onNavigate }) 
   const {
     currentRoom,
     players,
+    currentRound,
     isLoading,
     toggleReady,
     startGameRound,
@@ -32,6 +33,13 @@ export const WaitingRoomPage: React.FC<WaitingRoomPageProps> = ({ onNavigate }) 
 
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+
+  // Auto-navigate non-host players when host starts the round
+  useEffect(() => {
+    if (currentRound && ['DEALING_CARDS', 'CARD_REVEAL', 'CLUE_ROUND'].includes(currentRound.phase)) {
+      onNavigate('game');
+    }
+  }, [currentRound?.id, currentRound?.phase, onNavigate]);
 
   if (!currentRoom || !user) {
     return (
